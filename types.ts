@@ -54,23 +54,40 @@ export interface Player {
 
 export interface RoundResult {
   round: number;
+  prompt: PromptItem; // お題情報を追加
   playerResults: {
     playerId: string;
     playerName: string;
-    handShape: HandShape;
+    handShape?: HandShape; // オプショナルに変更（まだ選択していない場合もある）
     score: number;
+    feedback?: string; // AIフィードバックを追加
+    capturedImage?: string; // キャプチャされた画像を追加
+    rank: number; // ランキング順位を追加
   }[];
+  leaderboard: {
+    playerId: string;
+    playerName: string;
+    totalScore: number;
+    rank: number;
+  }[]; // 総合ランキング情報を追加
 }
 
 export interface GameSession {
   id: string;
   players: Player[];
-  state: 'waitingForPlayers' | 'lobby' | 'playing' | 'roundEnd' | 'gameEnd'; // GameStateをより具体的に
+  state: 'waitingForPlayers' | 'lobby' | 'playing' | 'roundEnd' | 'gameEnd';
   currentPrompt?: PromptItem;
-  currentRound: number; // roundからcurrentRoundに変更
-  roundResults: RoundResult[]; // ラウンドごとの結果
-  playerScores: { [playerId: string]: number }; // 最終スコア
-  hostId: string; // ホストのIDを追加
+  currentRound: number;
+  roundResults: RoundResult[];
+  playerScores: { [playerId: string]: number };
+  hostId: string;
+  totalRounds: number; // 総ラウンド数を追加
+  finalLeaderboard?: { // 最終ランキング情報を追加
+    playerId: string;
+    playerName: string;
+    totalScore: number;
+    rank: number;
+  }[];
 }
 
 export interface GameMessage {
@@ -113,6 +130,15 @@ export interface SelectHandShapeMessage extends GameMessage {
   sessionId: string; // セッションIDを追加
   playerId: string;
   handShape: HandShape;
+}
+
+export interface SubmitScoreMessage extends GameMessage {
+  type: "submitScore";
+  sessionId: string;
+  playerId: string;
+  score: number;
+  feedback: string;
+  capturedImage?: string;
 }
 
 export interface GameStartMessage extends GameMessage {

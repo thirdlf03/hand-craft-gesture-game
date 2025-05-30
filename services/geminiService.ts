@@ -42,7 +42,12 @@ Return your response ONLY as a JSON object with keys "points" (number, integer) 
       }
     });
 
-    let jsonStr = response.text.trim();
+    let jsonStr = response.text?.trim() || '';
+    if (!jsonStr) {
+      console.error("Gemini response text is empty or undefined");
+      return { points: 0, feedback: "AIから評価をもらえませんでした。もう一度試してみてね！" };
+    }
+    
     const fenceRegex = /^```(\w*)?\s*\n?(.*?)\n?\s*```$/s;
     const match = jsonStr.match(fenceRegex);
     if (match && match[2]) {

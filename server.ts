@@ -1,5 +1,49 @@
 import { WebSocketServer } from 'ws';
-import { GameMessage, JoinGameMessage, GameUpdateMessage, PlayerJoinedMessage, Player, GameSession, SelectHandShapeMessage, HandShape, RoundResult, NewPlayerJoinedMessage } from './types';
+import { GameMessage, JoinGameMessage, GameUpdateMessage, PlayerJoinedMessage, Player, GameSession, SelectHandShapeMessage, HandShape, RoundResult, NewPlayerJoinedMessage, PromptItem } from './types';
+
+// お題の定義をサーバー側にも追加
+const PROMPTS: PromptItem[] = [
+  {
+    id: "p1",
+    shape1: "グー" as HandShape,
+    shape2: "チョキ" as HandShape,
+    objectToMake: "カニ",
+    objectToMakeEn: "crab",
+    fullText: "グーとチョキで「カニ」を作ってね！",
+  },
+  {
+    id: "p2",
+    shape1: "パー" as HandShape,
+    shape2: "パー" as HandShape,
+    objectToMake: "ちょうちょ",
+    objectToMakeEn: "butterfly",
+    fullText: "パーとパーで「ちょうちょ」を作ってね！",
+  },
+  {
+    id: "p3",
+    shape1: "グー" as HandShape,
+    shape2: "パー" as HandShape,
+    objectToMake: "かたつむり",
+    objectToMakeEn: "snail",
+    fullText: "グーとパーで「かたつむり」を作ってね！",
+  },
+  {
+    id: "p4",
+    shape1: "チョキ" as HandShape,
+    shape2: "パー" as HandShape,
+    objectToMake: "キツネ",
+    objectToMakeEn: "fox",
+    fullText: "チョキとパーで「キツネ」を作ってね！",
+  },
+  {
+    id: "p5",
+    shape1: "グー" as HandShape,
+    shape2: "グー" as HandShape,
+    objectToMake: "双眼鏡",
+    objectToMakeEn: "binoculars",
+    fullText: "グーとグーで「双眼鏡」を作ってね！",
+  },
+];
 
 const wss = new WebSocketServer({ port: 8080 });
 
@@ -7,6 +51,7 @@ const wss = new WebSocketServer({ port: 8080 });
 const players: Map<string, Player> = new Map();
 const playerConnections: Map<string, any> = new Map(); // プレイヤーIDとWebSocket接続の紐付け
 let gameSession: GameSession | null = null;
+let usedPrompts: Set<string> = new Set(); // 使用済みお題の管理
 
 wss.on('connection', ws => {
   console.log('Client connected');
@@ -44,7 +89,8 @@ wss.on('connection', ws => {
               currentRound: 1,
               roundResults: [],
               playerScores: {},
-              hostId: playerId
+              hostId: playerId,
+              totalRounds: 3 // 総ラウンド数を設定
             };
           } else {
             gameSession.players = Array.from(players.values());
@@ -104,17 +150,35 @@ wss.on('connection', ws => {
           
         case 'startGame':
           if (gameSession) {
+            // お題をランダムに選択
+            const availablePrompts = PROMPTS.filter(p => !usedPrompts.has(p.id));
+            let selectedPrompt: PromptItem;
+            
+            if (availablePrompts.length === 0) {
+              // 全てのお題を使い切った場合はリセット
+              usedPrompts.clear();
+              const randomIndex = Math.floor(Math.random() * PROMPTS.length);
+              selectedPrompt = PROMPTS[randomIndex];
+            } else {
+              const randomIndex = Math.floor(Math.random() * availablePrompts.length);
+              selectedPrompt = availablePrompts[randomIndex];
+            }
+            
+            usedPrompts.add(selectedPrompt.id);
+            
             // ゲームセッションの状態を更新
             gameSession.state = 'playing';
             gameSession.currentRound = 1;
+            gameSession.currentPrompt = selectedPrompt; // お題を設定
             
-            // ゲーム開始の通知（プライバシー保護）
+            // ゲーム開始の通知（お題を含む）
             const gameStartResponse = {
               type: 'gameStart',
               session: {
                 id: gameSession.id,
                 state: gameSession.state,
                 currentRound: gameSession.currentRound,
+                currentPrompt: gameSession.currentPrompt, // お題を含める
                 players: gameSession.players.map(p => ({
                   id: p.id,
                   name: p.name,
@@ -133,7 +197,7 @@ wss.on('connection', ws => {
               }
             });
             
-            console.log('Game started!');
+            console.log('Game started with prompt:', selectedPrompt.fullText);
           } else {
             console.error('No game session found when trying to start game');
           }
@@ -145,20 +209,40 @@ wss.on('connection', ws => {
             const player = players.get(selectData.playerId)!;
             player.currentHandShape = selectData.handShape;
             
+            console.log(`Player ${player.name} selected ${selectData.handShape}. Total players: ${players.size}, Players with shapes: ${Array.from(players.values()).filter(p => p.currentHandShape).length}`);
+            
             // 全プレイヤーがハンドシェイプを選択したかチェック
             const allPlayersSelected = Array.from(players.values()).every(p => p.currentHandShape);
             
             if (allPlayersSelected) {
+              console.log('All players have selected their hand shapes. Processing round end...');
+              
               // ラウンド終了処理
               gameSession.state = 'roundEnd';
+              
+              // プレイヤーの結果を作成（スコア順でランク付け）
+              const playerResultsWithScores = Array.from(players.values()).map(p => ({
+                playerId: p.id,
+                playerName: p.name,
+                handShape: p.currentHandShape!,
+                score: calculateScore(p.currentHandShape!)
+              }));
+              
+              console.log('Player results:', playerResultsWithScores);
+              
+              // スコア順でソートしてランクを付与
+              const sortedResults = playerResultsWithScores
+                .sort((a, b) => b.score - a.score)
+                .map((result, index) => ({
+                  ...result,
+                  rank: index + 1
+                }));
+              
               gameSession.roundResults.push({
                 round: gameSession.currentRound,
-                playerResults: Array.from(players.values()).map(p => ({
-                  playerId: p.id,
-                  playerName: p.name,
-                  handShape: p.currentHandShape!,
-                  score: calculateScore(p.currentHandShape!) // スコア計算ロジックを追加
-                }))
+                prompt: gameSession.currentPrompt!, // 現在のお題を追加
+                playerResults: sortedResults,
+                leaderboard: [] // 後で計算
               });
               
               // プレイヤーのスコアを更新
@@ -170,6 +254,28 @@ wss.on('connection', ws => {
                   gameSession!.playerScores[player.id] = player.score;
                 }
               });
+              
+              // 総合ランキング（leaderboard）を計算
+              const currentRoundIndex = gameSession.roundResults.length - 1;
+              const leaderboard = Array.from(players.values())
+                .map(player => ({
+                  playerId: player.id,
+                  playerName: player.name,
+                  totalScore: player.score,
+                  rank: 0 // 後で設定
+                }))
+                .sort((a, b) => b.totalScore - a.totalScore)
+                .map((player, index) => ({
+                  ...player,
+                  rank: index + 1
+                }));
+              
+              console.log('Calculated leaderboard:', leaderboard);
+              
+              // ラウンド結果に総合ランキングを追加
+              gameSession.roundResults[currentRoundIndex].leaderboard = leaderboard;
+              
+              console.log('Round results with leaderboard:', gameSession.roundResults[currentRoundIndex]);
             }
             
             // ゲーム状態更新を全クライアントに通知
@@ -194,6 +300,8 @@ wss.on('connection', ws => {
               }
             };
             
+            console.log('Sending gameUpdate with round results:', JSON.stringify(gameUpdateResponse.session.roundResults, null, 2));
+            
             wss.clients.forEach(client => {
               if (client.readyState === client.OPEN) {
                 client.send(JSON.stringify(gameUpdateResponse));
@@ -215,6 +323,23 @@ wss.on('connection', ws => {
               Array.from(players.values()).forEach(player => {
                 player.currentHandShape = undefined;
               });
+              
+              // 新しいお題を選択
+              const availablePrompts = PROMPTS.filter(p => !usedPrompts.has(p.id));
+              let selectedPrompt: PromptItem;
+              
+              if (availablePrompts.length === 0) {
+                // 全てのお題を使い切った場合はリセット
+                usedPrompts.clear();
+                const randomIndex = Math.floor(Math.random() * PROMPTS.length);
+                selectedPrompt = PROMPTS[randomIndex];
+              } else {
+                const randomIndex = Math.floor(Math.random() * availablePrompts.length);
+                selectedPrompt = availablePrompts[randomIndex];
+              }
+              
+              usedPrompts.add(selectedPrompt.id);
+              gameSession.currentPrompt = selectedPrompt; // 新しいお題を設定
             }
             
             gameSession.players = Array.from(players.values());
@@ -226,6 +351,7 @@ wss.on('connection', ws => {
                 id: gameSession.id,
                 state: gameSession.state,
                 currentRound: gameSession.currentRound,
+                currentPrompt: gameSession.currentPrompt, // お題を含める
                 players: gameSession.players.map(p => ({
                   id: p.id,
                   name: p.name,
@@ -245,6 +371,8 @@ wss.on('connection', ws => {
                 client.send(JSON.stringify(nextRoundResponse));
               }
             });
+            
+            console.log(gameSession.state === 'gameEnd' ? 'Game ended!' : `Round ${gameSession.currentRound} started with prompt:`, gameSession.currentPrompt?.fullText);
           }
           break;
           
@@ -322,9 +450,9 @@ wss.on('connection', ws => {
 
 // スコア計算ロジック（簡単な例）
 function calculateScore(handShape: HandShape): number {
-  // 適切なハンドシェイプに基づいてスコアを計算
-  // この例では、すべてのハンドシェイプに10ポイントを与える
-  return 10;
+  // ランダムなスコアを生成（20-100ポイント）してランキングに差を出す
+  // 実際のプロジェクトでは、AIによる評価スコアがここに入る
+  return Math.floor(Math.random() * 81) + 20; // 20-100の範囲でランダムスコア
 }
 
 function generatePlayerId(): string {

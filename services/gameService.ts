@@ -1,4 +1,4 @@
-import { GameMessage, GameUpdateMessage, PlayerJoinedMessage, Player, GameSession, HandShape, JoinGameMessage, SelectHandShapeMessage, GameStartMessage, GameEndMessage, NextRoundMessage, ErrorMessage } from '../types';
+import { GameMessage, GameUpdateMessage, PlayerJoinedMessage, Player, GameSession, HandShape, JoinGameMessage, SelectHandShapeMessage, GameStartMessage, GameEndMessage, NextRoundMessage, ErrorMessage, SubmitScoreMessage } from '../types';
 import { WEBSOCKET_URL } from '../constants';
 
 /**
@@ -132,6 +132,26 @@ class GameService { // export default に変更
             sessionId: sessionId, // sessionIdを追加
             playerId: playerId,
             handShape: handShape,
+        };
+        this.sendMessage(message);
+    }
+
+    /**
+     * プレイヤーのスコアと結果をサーバーに送信します。
+     * @param sessionId 現在のゲームセッションID。
+     * @param playerId スコアを送信するプレイヤーのID。
+     * @param score プレイヤーのスコア。
+     * @param feedback AIからのフィードバック。
+     * @param capturedImage キャプチャされた画像（オプション）。
+     */
+    public submitScore(sessionId: string, playerId: string, score: number, feedback: string, capturedImage?: string): void {
+        const message: SubmitScoreMessage = {
+            type: 'submitScore',
+            sessionId: sessionId,
+            playerId: playerId,
+            score: score,
+            feedback: feedback,
+            capturedImage: capturedImage,
         };
         this.sendMessage(message);
     }

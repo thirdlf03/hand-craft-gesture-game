@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { GameState, PromptItem, ScoreData, HandShape, GameSession, Player, GameUpdateMessage, PlayerJoinedMessage, GameStartMessage, GameEndMessage, SelectHandShapeMessage, NewPlayerJoinedMessage } from './types';
+import { GameState, PromptItem, ScoreData, HandShape, GameSession, Player, GameUpdateMessage, PlayerJoinedMessage, GameStartMessage, GameEndMessage, SelectHandShapeMessage, NewPlayerJoinedMessage, PlayerLeftMessage } from './types';
 import { PROMPTS, INTRO_DURATION_MS, PROMPT_DISPLAY_DURATION_MS, COUNTDOWN_SECONDS, CAPTURE_DELAY_MS, API_KEY_WARNING } from './constants';
 import CameraFeed, { CameraFeedHandle } from './components/CameraFeed';
 import PromptDisplay from './components/PromptDisplay';
@@ -63,34 +63,57 @@ const App: React.FC = () => {
         setGameState(GameState.SCORING);
         const result = await evaluateHandShapeCreation(imageData, currentPrompt);
         setScore(result);
+        
+        // マルチプレイヤーの場合はサーバーに結果を送信
+        if (gameSession && playerId && gameServiceRef.current) {
+          gameServiceRef.current.submitScore(
+            gameSession.id,
+            playerId,
+            result.points,
+            result.feedback,
+            imageData
+          );
+        }
+        
         setGameState(GameState.SHOWING_RESULT);
       } else {
         setErrorMessage("写真の撮影に失敗しました。もう一度試してください。");
         setGameState(GameState.ERROR);
       }
     }
-  }, [currentPrompt]);
+  }, [currentPrompt, gameSession, playerId]);
   
   const handleTimeout = useCallback(() => {
     setGameState(GameState.CAPTURING);
     // Short delay to allow UI to update (e.g., show "SNAP!") before capturing
-    setTimeout(() => {
+    setTimeout(async () => {
         if (cameraRef.current && currentPrompt) {
           const imageData = cameraRef.current.captureImage();
           if (imageData) {
             setLastCapturedImage(imageData);
             setGameState(GameState.SCORING);
-            evaluateHandShapeCreation(imageData, currentPrompt).then(result => {
-              setScore(result);
-              setGameState(GameState.SHOWING_RESULT);
-            });
+            const result = await evaluateHandShapeCreation(imageData, currentPrompt);
+            setScore(result);
+            
+            // マルチプレイヤーの場合はサーバーに結果を送信
+            if (gameSession && playerId && gameServiceRef.current) {
+              gameServiceRef.current.submitScore(
+                gameSession.id,
+                playerId,
+                result.points,
+                result.feedback,
+                imageData
+              );
+            }
+            
+            setGameState(GameState.SHOWING_RESULT);
           } else {
             setErrorMessage("写真の撮影に失敗しました。もう一度試してください。");
             setGameState(GameState.ERROR);
           }
         }
     }, CAPTURE_DELAY_MS);
-  }, [currentPrompt]);
+  }, [currentPrompt, gameSession, playerId]);
 
   const playAgain = () => {
     setScore(null);
@@ -105,30 +128,43 @@ const App: React.FC = () => {
     let intervalId: NodeJS.Timeout | undefined;
 
     if (gameState === GameState.INTRO) {
-      // Prompt selection logic moved here to avoid dependency loop
-      setUsedPrompts((currentUsedPrompts) => {
-        const availablePrompts = PROMPTS.filter(p => !currentUsedPrompts.has(p.id));
-        let selectedPrompt: PromptItem;
-        
-        if (availablePrompts.length === 0) {
-          // All prompts used, reset
-          const randomIndex = Math.floor(Math.random() * PROMPTS.length);
-          selectedPrompt = PROMPTS[randomIndex];
-          // Return new Set with just the selected prompt
-          setCurrentPrompt(selectedPrompt);
-          return new Set([selectedPrompt.id]);
-        } else {
-          const randomIndex = Math.floor(Math.random() * availablePrompts.length);
-          selectedPrompt = availablePrompts[randomIndex];
-          setCurrentPrompt(selectedPrompt);
-          // Add selected prompt to existing set
-          return new Set(currentUsedPrompts).add(selectedPrompt.id);
+      // お題が設定されていない場合は、サーバーからの受信を待つかローカルで選択する
+      if (!currentPrompt) {
+        // マルチプレイヤーでサーバーからお題が来ている場合はそれを使用
+        if (gameSession?.currentPrompt) {
+          setCurrentPrompt(gameSession.currentPrompt);
+        } 
+        // シングルプレイヤーモード、またはマルチプレイヤーでもサーバーからお題が来ない場合はローカルで選択
+        else if (!gameSession || gameSession.state === 'waitingForPlayers' || gameSession.state === 'lobby' || !gameSession.currentPrompt) {
+          setUsedPrompts((currentUsedPrompts) => {
+            const availablePrompts = PROMPTS.filter(p => !currentUsedPrompts.has(p.id));
+            let selectedPrompt: PromptItem;
+            
+            if (availablePrompts.length === 0) {
+              // All prompts used, reset
+              const randomIndex = Math.floor(Math.random() * PROMPTS.length);
+              selectedPrompt = PROMPTS[randomIndex];
+              setCurrentPrompt(selectedPrompt);
+              return new Set([selectedPrompt.id]);
+            } else {
+              const randomIndex = Math.floor(Math.random() * availablePrompts.length);
+              selectedPrompt = availablePrompts[randomIndex];
+              setCurrentPrompt(selectedPrompt);
+              return new Set(currentUsedPrompts).add(selectedPrompt.id);
+            }
+          });
         }
-      });
+      }
       
-      timerId = setTimeout(() => setGameState(GameState.SHOWING_PROMPT), INTRO_DURATION_MS);
+      // お題が設定されている場合のみ次の状態に進む
+      if (currentPrompt) {
+        timerId = setTimeout(() => setGameState(GameState.SHOWING_PROMPT), INTRO_DURATION_MS);
+      }
     } else if (gameState === GameState.SHOWING_PROMPT) {
-      timerId = setTimeout(() => setGameState(GameState.COUNTDOWN), PROMPT_DISPLAY_DURATION_MS);
+      // お題が設定されている場合のみカウントダウンに進む
+      if (currentPrompt) {
+        timerId = setTimeout(() => setGameState(GameState.COUNTDOWN), PROMPT_DISPLAY_DURATION_MS);
+      }
     }
     
     // Intro animation effect
@@ -142,7 +178,7 @@ const App: React.FC = () => {
       if (timerId) clearTimeout(timerId);
       if (intervalId) clearInterval(intervalId);
     };
-  }, [gameState, introShapes.length]);
+  }, [gameState, introShapes.length, gameSession, currentPrompt]);
 
   // Multiplayer useEffect
   useEffect(() => {
@@ -179,15 +215,19 @@ const App: React.FC = () => {
           setPlayerList(gameUpdateMessage.session.players);
           setCurrentRound(gameUpdateMessage.session.currentRound);
           setRoundResults(gameUpdateMessage.session.roundResults);
+          
+          // サーバーからお題が送信された場合は設定する
+          if (gameUpdateMessage.session.currentPrompt) {
+            setCurrentPrompt(gameUpdateMessage.session.currentPrompt);
+          }
+          
           // Update game state based on session state
           if (gameUpdateMessage.session.state === 'waitingForPlayers' || gameUpdateMessage.session.state === 'lobby') {
             // ロビー状態では現在のGameStateを保持し、強制的にIDLEに変更しない
-            // setGameState(GameState.IDLE); // この行をコメントアウト
           } else if (gameUpdateMessage.session.state === 'playing') {
-            // Transition to game countdown or prompt display
-            if (gameUpdateMessage.session.currentPrompt) {
-              setCurrentPrompt(gameUpdateMessage.session.currentPrompt);
-              setGameState(GameState.SHOWING_PROMPT); // Or COUNTDOWN directly if timer is managed by server
+            // ゲーム中の場合、お題表示またはカウントダウンに移行
+            if (gameState === GameState.IDLE || gameState === GameState.INTRO) {
+              setGameState(GameState.SHOWING_PROMPT);
             }
           } else if (gameUpdateMessage.session.state === 'roundEnd' || gameUpdateMessage.session.state === 'gameEnd') {
             setGameState(GameState.SHOWING_RESULT);
@@ -216,6 +256,12 @@ const App: React.FC = () => {
           setGameSession(gameStartMessage.session);
           setPlayerList(gameStartMessage.session.players);
           setCurrentRound(gameStartMessage.session.currentRound);
+          
+          // サーバーからお題が送信された場合は設定する
+          if (gameStartMessage.session.currentPrompt) {
+            setCurrentPrompt(gameStartMessage.session.currentPrompt);
+          }
+          
           setUsedPrompts(new Set()); // Reset used prompts for new game
           setGameState(GameState.INTRO); // Start game intro
           break;
@@ -228,6 +274,22 @@ const App: React.FC = () => {
           break;
         case 'error':
           setMultiplayerErrorMessage(message.message);
+          break;
+        case 'playerLeft':
+          // プレイヤーが退出した場合の処理
+          const playerLeftMessage = message as PlayerLeftMessage;
+          if (gameSession) {
+            // プレイヤーリストから退出したプレイヤーを削除
+            const updatedPlayers = playerList.filter(player => player.id !== playerLeftMessage.playerId);
+            setPlayerList(updatedPlayers);
+            
+            // セッション情報を更新
+            const updatedSession = {
+              ...gameSession,
+              players: updatedPlayers
+            };
+            setGameSession(updatedSession);
+          }
           break;
         default:
           console.warn("Unknown message type:", message.type);
@@ -286,19 +348,39 @@ const App: React.FC = () => {
         <div className="text-center">
           <h1 className="text-4xl md:text-5xl font-mochiy text-primary mb-4">てづくりジェスチャーゲーム！</h1>
           <p className="text-xl md:text-2xl text-text-dark mb-8">「グー・チョキ・パー」でなにつくろ？</p>
-          <input
-            type="text"
-            placeholder="プレイヤー名を入力"
-            value={playerName}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPlayerName(e.target.value)}
-            className="px-4 py-2 mb-4 text-lg rounded-lg border-2 border-gray-300 focus:outline-none focus:border-secondary"
-          />
-          <button
-            onClick={handleJoinGame}
-            className="px-10 py-4 bg-secondary text-text-light font-bold text-2xl rounded-lg shadow-xl hover:bg-teal-600 transition-colors active:scale-95 transform hover:scale-105"
-          >
-            ゲームに参加！
-          </button>
+          
+          <div className="mb-6">
+            <input
+              type="text"
+              placeholder="プレイヤー名を入力"
+              value={playerName}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPlayerName(e.target.value)}
+              className="px-4 py-2 mb-4 text-lg rounded-lg border-2 border-gray-300 focus:outline-none focus:border-secondary"
+            />
+          </div>
+          
+          <div className="space-y-4">
+            <button
+              onClick={handleJoinGame}
+              className="block mx-auto px-10 py-4 bg-secondary text-text-light font-bold text-2xl rounded-lg shadow-xl hover:bg-teal-600 transition-colors active:scale-95 transform hover:scale-105"
+            >
+              マルチプレイヤーゲームに参加！
+            </button>
+            
+            <button
+              onClick={() => {
+                // シングルプレイヤーモードを開始
+                setPlayerId('single-player');
+                setPlayerName('シングルプレイヤー');
+                setGameSession(null);
+                startGame();
+              }}
+              className="block mx-auto px-10 py-4 bg-accent text-text-light font-bold text-2xl rounded-lg shadow-xl hover:bg-purple-600 transition-colors active:scale-95 transform hover:scale-105"
+            >
+              ひとりで遊ぶ！
+            </button>
+          </div>
+          
           {multiplayerErrorMessage && (
             <p className="text-red-500 font-bold mt-4">{multiplayerErrorMessage}</p>
           )}
@@ -367,7 +449,15 @@ const App: React.FC = () => {
           <div className="w-full">
             <PromptDisplay prompt={currentPrompt} />
           </div>
-        ) : <p>読み込み中...</p>;
+        ) : (
+          <div className="text-center">
+            <h2 className="text-3xl font-mochiy text-primary mb-4">お題を準備中...</h2>
+            <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-secondary mx-auto"></div>
+            <p className="text-lg text-gray-600 mt-4">
+              {gameSession ? 'サーバーからお題を受信しています...' : 'お題を選択しています...'}
+            </p>
+          </div>
+        );
       case GameState.COUNTDOWN:
       case GameState.CAPTURING: // CameraFeed visible during CAPTURING too (for the "SNAP!" moment)
         return (
@@ -409,17 +499,48 @@ const App: React.FC = () => {
       case GameState.SHOWING_RESULT:
         return (
           <div>
-            <ScoreDisplay scoreData={score} onPlayAgain={playAgain} capturedImage={lastCapturedImage} />
-            {gameSession && gameSession.state === 'gameEnd' && (
+            <ScoreDisplay 
+              scoreData={score} 
+              onPlayAgain={playAgain} 
+              capturedImage={lastCapturedImage}
+              gameSession={gameSession || undefined}
+              playerId={playerId || undefined}
+              currentRound={currentRound}
+            />
+            {gameSession && gameSession.state === 'gameEnd' && gameSession.finalLeaderboard && (
               <div className="mt-8 text-center">
-                <h2 className="text-3xl font-mochiy text-primary mb-4">最終結果</h2>
-                <ul className="list-disc list-inside">
-                  {playerList.map((player: Player) => (
-                    <li key={player.id} className="text-xl">
-                      {player.name}: {player.score} ポイント
-                    </li>
-                  ))}
-                </ul>
+                <h2 className="text-3xl font-mochiy text-primary mb-4">🏆 最終結果 🏆</h2>
+                <div className="bg-gradient-to-br from-gold-50 to-yellow-50 p-6 rounded-xl shadow-lg">
+                  <div className="space-y-3">
+                    {gameSession.finalLeaderboard
+                      .sort((a, b) => a.rank - b.rank)
+                      .map((player, index) => (
+                        <div 
+                          key={player.playerId}
+                          className={`flex justify-between items-center p-4 rounded-lg ${
+                            player.playerId === playerId 
+                              ? 'bg-blue-100 border-2 border-blue-300' 
+                              : 'bg-white'
+                          } ${index < 3 ? 'shadow-lg' : 'shadow-md'}`}
+                        >
+                          <div className="flex items-center space-x-3">
+                            <span className="text-2xl font-bold">
+                              {player.rank === 1 ? '🥇' : player.rank === 2 ? '🥈' : player.rank === 3 ? '🥉' : `${player.rank}位`}
+                            </span>
+                            <span className={`text-xl font-bold ${
+                              player.playerId === playerId ? 'text-blue-800' : 'text-gray-800'
+                            }`}>
+                              {player.playerName}
+                              {player.playerId === playerId ? ' (あなた)' : ''}
+                            </span>
+                          </div>
+                          <span className="text-2xl font-bold text-gray-800">
+                            {player.totalScore}点
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
                 <button
                   onClick={() => {
                     setGameSession(null);
@@ -439,12 +560,14 @@ const App: React.FC = () => {
               </div>
             )}
             {gameSession && gameSession.state === 'roundEnd' && isHost && (
-              <button
-                onClick={() => gameServiceRef.current?.startNextRound()}
-                className="px-8 py-3 bg-accent text-text-light font-bold text-lg rounded-lg shadow-md hover:bg-purple-600 transition-colors active:scale-95 mt-6"
-              >
-                次のラウンドへ
-              </button>
+              <div className="mt-6 text-center">
+                <button
+                  onClick={() => gameServiceRef.current?.startNextRound()}
+                  className="px-8 py-3 bg-accent text-text-light font-bold text-lg rounded-lg shadow-md hover:bg-purple-600 transition-colors active:scale-95"
+                >
+                  次のラウンドへ
+                </button>
+              </div>
             )}
           </div>
         );
