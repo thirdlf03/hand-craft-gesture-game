@@ -1,0 +1,7 @@
+{
+  "name": "てづくりジェスチャーゲーム (Hand-Craft Gesture Game)",
+  "description": "ウェブカメラを使って、グー・チョキ・パーの手の形でいろいろなものを作り、AIが採点する楽しいゲームです。(A fun game where you use your webcam to make various things with rock, paper, and scissors hand shapes, and an AI scores your creation.)",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

@@ -1,0 +1,47 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>てづくりジェスチャーゲーム</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Mochiy+Pop+One&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            'mochiy': ['"Mochiy Pop One"', 'sans-serif'],
+            'noto': ['"Noto Sans JP"', 'sans-serif'],
+          },
+          colors: {
+            'game-bg': '#FFF9E6', // Light cream
+            'primary': '#FF6B6B', // Coral red
+            'secondary': '#4ECDC4', // Teal
+            'accent': '#FFD166', // Sunny yellow
+            'text-dark': '#2D2D2D',
+            'text-light': '#FFFFFF',
+          }
+        }
+      }
+    }
+  </script>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.1.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.0/",
+    "react/": "https://esm.sh/react@^19.1.0/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.2.0"
+  }
+}
+</script>
+</head>
+<body class="bg-game-bg font-noto">
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
+<link rel="stylesheet" href="index.css">
+<script src="index.tsx" type="module"></script>
