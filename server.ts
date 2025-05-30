@@ -1,5 +1,5 @@
 import { WebSocketServer } from 'ws';
-import { GameMessage, JoinGameMessage, GameUpdateMessage, PlayerJoinedMessage, Player, GameSession, SelectHandShapeMessage, HandShape, RoundResult, NewPlayerJoinedMessage, PromptItem } from './types';
+import { GameMessage, JoinGameMessage, GameUpdateMessage, PlayerJoinedMessage, Player, GameSession, SelectHandShapeMessage, HandShape, RoundResult, NewPlayerJoinedMessage, PromptItem, SubmitScoreMessage } from './types';
 
 // お題の定義をサーバー側にも追加
 const PROMPTS: PromptItem[] = [
@@ -204,23 +204,100 @@ wss.on('connection', ws => {
           break;
 
         case 'selectHandShape':
-          const selectData = data as SelectHandShapeMessage;
-          if (gameSession && players.has(selectData.playerId)) {
-            const player = players.get(selectData.playerId)!;
-            player.currentHandShape = selectData.handShape;
+          // NOTE: このケースは現在使用されていません。
+          // スコア送信ベース（submitScore）のフローに変更されました。
+          console.log('selectHandShape message received but ignored (using submitScore flow instead)');
+          break;
+
+        case 'nextRound':
+          if (gameSession && gameSession.state === 'roundEnd') {
+            // 次のラウンドまたはゲーム終了の判定
+            if (gameSession.currentRound >= 3) { // 3ラウンドでゲーム終了
+              gameSession.state = 'gameEnd';
+            } else {
+              gameSession.currentRound++;
+              gameSession.state = 'playing';
+              
+              // プレイヤーのハンドシェイプをリセット
+              Array.from(players.values()).forEach(player => {
+                player.currentHandShape = undefined;
+                player.currentScore = undefined;
+                player.currentFeedback = undefined;
+                player.currentCapturedImage = undefined;
+              });
+              
+              // 新しいお題を選択
+              const availablePrompts = PROMPTS.filter(p => !usedPrompts.has(p.id));
+              let selectedPrompt: PromptItem;
+              
+              if (availablePrompts.length === 0) {
+                // 全てのお題を使い切った場合はリセット
+                usedPrompts.clear();
+                const randomIndex = Math.floor(Math.random() * PROMPTS.length);
+                selectedPrompt = PROMPTS[randomIndex];
+              } else {
+                const randomIndex = Math.floor(Math.random() * availablePrompts.length);
+                selectedPrompt = availablePrompts[randomIndex];
+              }
+              
+              usedPrompts.add(selectedPrompt.id);
+              gameSession.currentPrompt = selectedPrompt; // 新しいお題を設定
+            }
             
-            console.log(`Player ${player.name} selected ${selectData.handShape}. Total players: ${players.size}, Players with shapes: ${Array.from(players.values()).filter(p => p.currentHandShape).length}`);
+            gameSession.players = Array.from(players.values());
             
-            // 全プレイヤーがハンドシェイプを選択したかチェック
-            const playersWithShapes = Array.from(players.values()).filter(p => p.currentHandShape);
-            const allPlayersSelected = playersWithShapes.length === players.size && players.size > 0;
+            // ゲーム状態更新を全クライアントに通知（プライバシー保護）
+            const nextRoundResponse = {
+              type: gameSession.state === 'gameEnd' ? 'gameEnd' : 'nextRound',
+              session: {
+                id: gameSession.id,
+                state: gameSession.state,
+                currentRound: gameSession.currentRound,
+                currentPrompt: gameSession.currentPrompt, // お題を含める
+                players: gameSession.players.map(p => ({
+                  id: p.id,
+                  name: p.name,
+                  score: p.score,
+                  isHost: p.isHost
+                })),
+                // ゲーム終了時のみ全ラウンド結果を送信
+                ...(gameSession.state === 'gameEnd' && {
+                  roundResults: gameSession.roundResults,
+                  playerScores: gameSession.playerScores
+                })
+              }
+            };
             
-            console.log(`All players selected check: ${allPlayersSelected} (${playersWithShapes.length}/${players.size})`);
-            console.log('Players with shapes:', playersWithShapes.map(p => ({ name: p.name, shape: p.currentHandShape })));
-            console.log('All players:', Array.from(players.values()).map(p => ({ name: p.name, shape: p.currentHandShape })));
+            wss.clients.forEach(client => {
+              if (client.readyState === client.OPEN) {
+                client.send(JSON.stringify(nextRoundResponse));
+              }
+            });
             
-            if (allPlayersSelected) {
-              console.log('All players have selected their hand shapes. Processing round end...');
+            console.log(gameSession.state === 'gameEnd' ? 'Game ended!' : `Round ${gameSession.currentRound} started with prompt:`, gameSession.currentPrompt?.fullText);
+          }
+          break;
+
+        case 'submitScore':
+          const submitData = data as SubmitScoreMessage;
+          if (gameSession && players.has(submitData.playerId)) {
+            const player = players.get(submitData.playerId)!;
+            
+            // プレイヤーのスコア情報を保存
+            player.currentScore = submitData.score;
+            player.currentFeedback = submitData.feedback;
+            player.currentCapturedImage = submitData.capturedImage;
+            
+            console.log(`Player ${player.name} submitted score: ${submitData.score}. Total players: ${players.size}, Players with scores: ${Array.from(players.values()).filter(p => p.currentScore !== undefined).length}`);
+            
+            // 全プレイヤーがスコアを送信したかチェック
+            const playersWithScores = Array.from(players.values()).filter(p => p.currentScore !== undefined);
+            const allPlayersSubmitted = playersWithScores.length === players.size && players.size > 0;
+            
+            console.log(`All players submitted check: ${allPlayersSubmitted} (${playersWithScores.length}/${players.size})`);
+            
+            if (allPlayersSubmitted) {
+              console.log('All players have submitted their scores. Processing round end...');
               
               // ラウンド終了処理
               gameSession.state = 'roundEnd';
@@ -229,8 +306,11 @@ wss.on('connection', ws => {
               const playerResultsWithScores = Array.from(players.values()).map(p => ({
                 playerId: p.id,
                 playerName: p.name,
-                handShape: p.currentHandShape!,
-                score: calculateScore(p.currentHandShape!)
+                handShape: p.currentHandShape,
+                score: p.currentScore!,
+                feedback: p.currentFeedback!,
+                capturedImage: p.currentCapturedImage,
+                rank: 0 // 後で設定
               }));
               
               console.log('Player results:', playerResultsWithScores);
@@ -259,6 +339,11 @@ wss.on('connection', ws => {
                   player.score += playerResult.score;
                   gameSession!.playerScores[player.id] = player.score;
                 }
+                // ラウンド終了後にクリア
+                player.currentScore = undefined;
+                player.currentFeedback = undefined;
+                player.currentCapturedImage = undefined;
+                player.currentHandShape = undefined;
               });
               
               // 総合ランキング（leaderboard）を計算
@@ -314,7 +399,7 @@ wss.on('connection', ws => {
                 }
               });
             } else {
-              // まだ全員選択していない場合は選択状況のみ通知
+              // まだ全員送信していない場合はスコア送信状況のみ通知
               const gameUpdateResponse = {
                 type: 'gameUpdate',
                 session: {
@@ -326,7 +411,7 @@ wss.on('connection', ws => {
                     name: p.name,
                     score: p.score,
                     isHost: p.isHost,
-                    hasSelected: p.currentHandShape !== undefined
+                    hasSubmittedScore: p.currentScore !== undefined
                   }))
                 }
               };
@@ -337,72 +422,6 @@ wss.on('connection', ws => {
                 }
               });
             }
-          }
-          break;
-
-        case 'nextRound':
-          if (gameSession && gameSession.state === 'roundEnd') {
-            // 次のラウンドまたはゲーム終了の判定
-            if (gameSession.currentRound >= 3) { // 3ラウンドでゲーム終了
-              gameSession.state = 'gameEnd';
-            } else {
-              gameSession.currentRound++;
-              gameSession.state = 'playing';
-              
-              // プレイヤーのハンドシェイプをリセット
-              Array.from(players.values()).forEach(player => {
-                player.currentHandShape = undefined;
-              });
-              
-              // 新しいお題を選択
-              const availablePrompts = PROMPTS.filter(p => !usedPrompts.has(p.id));
-              let selectedPrompt: PromptItem;
-              
-              if (availablePrompts.length === 0) {
-                // 全てのお題を使い切った場合はリセット
-                usedPrompts.clear();
-                const randomIndex = Math.floor(Math.random() * PROMPTS.length);
-                selectedPrompt = PROMPTS[randomIndex];
-              } else {
-                const randomIndex = Math.floor(Math.random() * availablePrompts.length);
-                selectedPrompt = availablePrompts[randomIndex];
-              }
-              
-              usedPrompts.add(selectedPrompt.id);
-              gameSession.currentPrompt = selectedPrompt; // 新しいお題を設定
-            }
-            
-            gameSession.players = Array.from(players.values());
-            
-            // ゲーム状態更新を全クライアントに通知（プライバシー保護）
-            const nextRoundResponse = {
-              type: gameSession.state === 'gameEnd' ? 'gameEnd' : 'nextRound',
-              session: {
-                id: gameSession.id,
-                state: gameSession.state,
-                currentRound: gameSession.currentRound,
-                currentPrompt: gameSession.currentPrompt, // お題を含める
-                players: gameSession.players.map(p => ({
-                  id: p.id,
-                  name: p.name,
-                  score: p.score,
-                  isHost: p.isHost
-                })),
-                // ゲーム終了時のみ全ラウンド結果を送信
-                ...(gameSession.state === 'gameEnd' && {
-                  roundResults: gameSession.roundResults,
-                  playerScores: gameSession.playerScores
-                })
-              }
-            };
-            
-            wss.clients.forEach(client => {
-              if (client.readyState === client.OPEN) {
-                client.send(JSON.stringify(nextRoundResponse));
-              }
-            });
-            
-            console.log(gameSession.state === 'gameEnd' ? 'Game ended!' : `Round ${gameSession.currentRound} started with prompt:`, gameSession.currentPrompt?.fullText);
           }
           break;
           

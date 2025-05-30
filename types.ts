@@ -50,6 +50,10 @@ export interface Player {
   currentHandShape?: HandShape;
   isHost: boolean;
   hasSelected?: boolean; // 他のプレイヤーの選択状況を安全に表示するため
+  // スコア送信用の一時的なフィールド
+  currentScore?: number;
+  currentFeedback?: string;
+  currentCapturedImage?: string;
 }
 
 export interface RoundResult {

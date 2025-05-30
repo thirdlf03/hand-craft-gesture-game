@@ -113,7 +113,7 @@ const ScoreDisplay: React.FC<ScoreDisplayProps> = ({
       </h2>
       
       {/* デバッグ情報（開発環境でのみ表示） */}
-      {process.env.NODE_ENV === 'development' && (
+      {/* {process.env.NODE_ENV === 'development' && (
         <div className="mb-4 p-3 bg-gray-100 rounded-lg text-xs text-left">
           <p><strong>Debug Info:</strong></p>
           <p>GameSession exists: {gameSession ? 'true' : 'false'}</p>
@@ -128,7 +128,7 @@ const ScoreDisplay: React.FC<ScoreDisplayProps> = ({
           <p>Session State: {sessionState}</p>
         </div>
       )}
-      
+       */}
       {capturedImage && (
         <div className="mb-6">
           <p className="text-lg text-text-dark mb-2">あなたが作った作品：</p>

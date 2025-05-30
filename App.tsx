@@ -209,6 +209,21 @@ const App: React.FC = () => {
 
     gameService.onMessage = (message: any) => {
       console.log("Received message:", message);
+      console.log("Message type:", message.type);
+      
+      // すべてのセッション情報を含むメッセージタイプのデバッグ
+      if (message.session) {
+        console.log("Session in message:", {
+          id: message.session.id,
+          state: message.session.state,
+          currentRound: message.session.currentRound,
+          roundResults: message.session.roundResults,
+          roundResultsType: typeof message.session.roundResults,
+          roundResultsIsArray: Array.isArray(message.session.roundResults),
+          roundResultsLength: message.session.roundResults?.length
+        });
+      }
+      
       switch (message.type) {
         case 'gameUpdate':
           const gameUpdateMessage = message as GameUpdateMessage;
@@ -271,10 +286,20 @@ const App: React.FC = () => {
           console.log("Round end message received:", roundEndMessage);
           console.log("Round results from server:", roundEndMessage.session.roundResults);
           console.log("Number of round results:", roundEndMessage.session.roundResults?.length);
-          setGameSession(roundEndMessage.session);
-          setPlayerList(roundEndMessage.session.players);
-          setCurrentRound(roundEndMessage.session.currentRound);
-          setRoundResults(roundEndMessage.session.roundResults);
+          
+          // デバッグ: サーバーから受信したセッション情報の詳細確認
+          console.log("Full session from roundEnd:", JSON.stringify(roundEndMessage.session, null, 2));
+          
+          // roundResultsのデフォルト値を設定
+          const updatedSession = {
+            ...roundEndMessage.session,
+            roundResults: roundEndMessage.session.roundResults || []
+          };
+          
+          setGameSession(updatedSession);
+          setPlayerList(updatedSession.players);
+          setCurrentRound(updatedSession.currentRound);
+          setRoundResults(updatedSession.roundResults);
           
           // 結果表示状態に移行
           setGameState(GameState.SHOWING_RESULT);
