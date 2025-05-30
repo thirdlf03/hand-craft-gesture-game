@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { GameState, PromptItem, ScoreData, HandShape, GameSession, Player, GameUpdateMessage, PlayerJoinedMessage, GameStartMessage, GameEndMessage, SelectHandShapeMessage } from './types';
+import { GameState, PromptItem, ScoreData, HandShape, GameSession, Player, GameUpdateMessage, PlayerJoinedMessage, GameStartMessage, GameEndMessage, SelectHandShapeMessage, NewPlayerJoinedMessage } from './types';
 import { PROMPTS, INTRO_DURATION_MS, PROMPT_DISPLAY_DURATION_MS, COUNTDOWN_SECONDS, CAPTURE_DELAY_MS, API_KEY_WARNING } from './constants';
 import CameraFeed, { CameraFeedHandle } from './components/CameraFeed';
 import PromptDisplay from './components/PromptDisplay';
@@ -195,10 +195,20 @@ const App: React.FC = () => {
           break;
         case 'playerJoined':
           const playerJoinedMessage = message as PlayerJoinedMessage;
-          setPlayerId(playerJoinedMessage.playerId);
-          setIsHost(playerJoinedMessage.isHost);
+          // 自分自身が参加した場合のみplayerIdとisHostを更新
+          if (!playerId) {
+            setPlayerId(playerJoinedMessage.playerId);
+            setIsHost(playerJoinedMessage.isHost);
+          }
           setGameSession(playerJoinedMessage.session);
           setPlayerList(playerJoinedMessage.session.players);
+          setMultiplayerErrorMessage(null);
+          break;
+        case 'newPlayerJoined':
+          const newPlayerJoinedMessage = message as NewPlayerJoinedMessage;
+          // 既存プレイヤーの場合、playerId と isHost の状態は変更せず、セッション情報のみ更新
+          setGameSession(newPlayerJoinedMessage.session);
+          setPlayerList(newPlayerJoinedMessage.session.players);
           setMultiplayerErrorMessage(null);
           break;
         case 'gameStart':

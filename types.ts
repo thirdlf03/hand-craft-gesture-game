@@ -49,6 +49,17 @@ export interface Player {
   score: number;
   currentHandShape?: HandShape;
   isHost: boolean;
+  hasSelected?: boolean; // 他のプレイヤーの選択状況を安全に表示するため
+}
+
+export interface RoundResult {
+  round: number;
+  playerResults: {
+    playerId: string;
+    playerName: string;
+    handShape: HandShape;
+    score: number;
+  }[];
 }
 
 export interface GameSession {
@@ -57,7 +68,7 @@ export interface GameSession {
   state: 'waitingForPlayers' | 'lobby' | 'playing' | 'roundEnd' | 'gameEnd'; // GameStateをより具体的に
   currentPrompt?: PromptItem;
   currentRound: number; // roundからcurrentRoundに変更
-  roundResults: { playerId: string; score: number; handShape: HandShape; }[]; // ラウンドごとの結果
+  roundResults: RoundResult[]; // ラウンドごとの結果
   playerScores: { [playerId: string]: number }; // 最終スコア
   hostId: string; // ホストのIDを追加
 }
@@ -122,4 +133,10 @@ export interface NextRoundMessage extends GameMessage {
 export interface ErrorMessage extends GameMessage {
   type: "error";
   message: string;
+}
+
+export interface NewPlayerJoinedMessage extends GameMessage {
+  type: "newPlayerJoined";
+  newPlayer: Player; // 新しく参加したプレイヤーの情報
+  session: GameSession; // 現在のゲームセッション情報
 }
