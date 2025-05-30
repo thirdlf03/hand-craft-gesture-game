@@ -57,20 +57,25 @@ const ScoreDisplay: React.FC<ScoreDisplayProps> = ({
     }
   };
 
+  // gameSessionが存在する場合のデフォルト値を設定
+  const roundResults = gameSession?.roundResults || [];
+  const totalRounds = gameSession?.totalRounds || 1;
+  const sessionState = gameSession?.state || 'playing';
+
   // 現在のラウンド結果を取得（より柔軟な条件で）
   let currentRoundResult: RoundResult | undefined;
   
-  if (gameSession?.roundResults && gameSession.roundResults.length > 0) {
+  if (roundResults.length > 0) {
     // currentRoundが指定されている場合はそれを使用
     if (currentRound !== undefined) {
-      currentRoundResult = gameSession.roundResults.find(
+      currentRoundResult = roundResults.find(
         result => result.round === currentRound
       );
     }
     
     // 見つからない場合は最新のラウンド結果を使用
     if (!currentRoundResult) {
-      currentRoundResult = gameSession.roundResults[gameSession.roundResults.length - 1];
+      currentRoundResult = roundResults[roundResults.length - 1];
     }
   }
 
@@ -80,10 +85,13 @@ const ScoreDisplay: React.FC<ScoreDisplayProps> = ({
   );
 
   // ランキング情報を表示するかどうか（条件を緩和）
-  const showRanking = gameSession && currentRoundResult && playerId && currentRoundResult.playerResults && currentRoundResult.playerResults.length > 0;
+  const showRanking = gameSession && currentRoundResult && playerId && 
+                     currentRoundResult.playerResults && 
+                     currentRoundResult.playerResults.length > 0;
 
   // ゲームが1ラウンドで終了かどうかを判定
-  const isSingleRoundGame = gameSession?.totalRounds === 1 || (gameSession?.roundResults && gameSession.roundResults.length === 1 && gameSession.state === 'gameEnd');
+  const isSingleRoundGame = totalRounds === 1 || 
+                           (roundResults.length === 1 && sessionState === 'gameEnd');
 
   // デバッグ情報をコンソールに出力
   console.log('Ranking Debug Info:', {
@@ -93,7 +101,9 @@ const ScoreDisplay: React.FC<ScoreDisplayProps> = ({
     playerResults: currentRoundResult?.playerResults,
     leaderboard: currentRoundResult?.leaderboard,
     isSingleRoundGame: isSingleRoundGame,
-    totalRounds: gameSession?.totalRounds
+    totalRounds: totalRounds,
+    roundResultsLength: roundResults.length,
+    sessionState: sessionState
   });
 
   return (
@@ -109,13 +119,13 @@ const ScoreDisplay: React.FC<ScoreDisplayProps> = ({
           <p>GameSession exists: {gameSession ? 'true' : 'false'}</p>
           <p>Player ID: {playerId || 'null'}</p>
           <p>Current Round: {currentRound}</p>
-          <p>Total Rounds: {gameSession?.totalRounds || 'undefined'}</p>
-          <p>Round Results count: {gameSession?.roundResults?.length || 0}</p>
+          <p>Total Rounds: {totalRounds}</p>
+          <p>Round Results count: {roundResults.length}</p>
           <p>Current Round Result exists: {currentRoundResult ? 'true' : 'false'}</p>
           <p>Player Results count: {currentRoundResult?.playerResults?.length || 0}</p>
           <p>Show Ranking: {showRanking ? 'true' : 'false'}</p>
           <p>Is Single Round Game: {isSingleRoundGame ? 'true' : 'false'}</p>
-          <p>Session State: {gameSession?.state || 'null'}</p>
+          <p>Session State: {sessionState}</p>
         </div>
       )}
       
@@ -241,8 +251,23 @@ const ScoreDisplay: React.FC<ScoreDisplayProps> = ({
         </div>
       )}
 
+      {/* マルチプレイヤーでラウンド結果が存在しない場合の表示 */}
+      {gameSession && roundResults.length === 0 && (
+        <div className="mt-6 bg-blue-50 border border-blue-200 p-4 rounded-lg">
+          <h3 className="text-lg font-bold text-blue-800 mb-2">🕒 他のプレイヤーを待機中...</h3>
+          <p className="text-blue-700 mb-2">
+            他のプレイヤーがまだゲームを完了していません。しばらくお待ちください。
+          </p>
+          <div className="bg-blue-100 p-3 rounded-lg text-sm text-blue-800">
+            <p>• セッション参加者: {gameSession.players?.length || 0}人</p>
+            <p>• 現在のラウンド: {currentRound || 1}</p>
+            <p>• セッション状態: {sessionState === 'playing' ? 'プレイ中' : sessionState}</p>
+          </div>
+        </div>
+      )}
+
       {/* マルチプレイヤーでも他ユーザーの結果が表示されない場合の診断メッセージ */}
-      {gameSession && (!showRanking || !currentRoundResult || !currentRoundResult.playerResults || currentRoundResult.playerResults.length <= 1) && (
+      {gameSession && roundResults.length > 0 && (!showRanking || !currentRoundResult || !currentRoundResult.playerResults || currentRoundResult.playerResults.length <= 1) && (
         <div className="mt-6 bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
           <h3 className="text-lg font-bold text-yellow-800 mb-2">他のプレイヤーの結果について</h3>
           {!currentRoundResult && (
@@ -259,7 +284,7 @@ const ScoreDisplay: React.FC<ScoreDisplayProps> = ({
               <p>詳細：</p>
               <p>- セッションID: {gameSession.id}</p>
               <p>- プレイヤー数: {gameSession.players?.length || 0}</p>
-              <p>- ラウンド結果数: {gameSession.roundResults?.length || 0}</p>
+              <p>- ラウンド結果数: {roundResults.length}</p>
               <p>- 現在のラウンド: {currentRound}</p>
             </div>
           )}
@@ -277,7 +302,7 @@ const ScoreDisplay: React.FC<ScoreDisplayProps> = ({
       )}
 
       {/* マルチプレイヤーゲーム終了後のボタン */}
-      {gameSession && isSingleRoundGame && gameSession.state === 'gameEnd' && (
+      {gameSession && isSingleRoundGame && sessionState === 'gameEnd' && (
         <div className="mt-6 text-center">
           <p className="text-lg text-gray-600 mb-4">ゲーム終了！お疲れ様でした！</p>
           <button
