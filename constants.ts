@@ -41,6 +41,14 @@ export const PROMPTS: PromptItem[] = [
     objectToMakeEn: "binoculars",
     fullText: "グーとグーで「双眼鏡」を作ってね！",
   },
+  {
+    id: "p6",
+    shape1: HandShape.CHOKI,
+    shape2: HandShape.PAA,
+    objectToMake: "キツネ",
+    objectToMakeEn: "fox",
+    fullText: "チョキとパーで「キツネ」を作ってね！",
+  },
 ];
 
 export const INTRO_DURATION_MS = 2000; // Duration for "お題発表！"
