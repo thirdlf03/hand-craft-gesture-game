@@ -212,7 +212,10 @@ wss.on('connection', ws => {
             console.log(`Player ${player.name} selected ${selectData.handShape}. Total players: ${players.size}, Players with shapes: ${Array.from(players.values()).filter(p => p.currentHandShape).length}`);
             
             // 全プレイヤーがハンドシェイプを選択したかチェック
-            const allPlayersSelected = Array.from(players.values()).every(p => p.currentHandShape);
+            const playersWithShapes = Array.from(players.values()).filter(p => p.currentHandShape);
+            const allPlayersSelected = playersWithShapes.length === players.size && players.size > 0;
+            
+            console.log(`All players selected check: ${allPlayersSelected} (${playersWithShapes.length}/${players.size})`);
             
             if (allPlayersSelected) {
               console.log('All players have selected their hand shapes. Processing round end...');
@@ -238,17 +241,18 @@ wss.on('connection', ws => {
                   rank: index + 1
                 }));
               
-              gameSession.roundResults.push({
+              const roundResult: RoundResult = {
                 round: gameSession.currentRound,
                 prompt: gameSession.currentPrompt!, // 現在のお題を追加
                 playerResults: sortedResults,
                 leaderboard: [] // 後で計算
-              });
+              };
+              
+              gameSession.roundResults.push(roundResult);
               
               // プレイヤーのスコアを更新
               Array.from(players.values()).forEach(player => {
-                const roundResult = gameSession!.roundResults[gameSession!.roundResults.length - 1];
-                const playerResult = roundResult.playerResults.find(r => r.playerId === player.id);
+                const playerResult = sortedResults.find(r => r.playerId === player.id);
                 if (playerResult) {
                   player.score += playerResult.score;
                   gameSession!.playerScores[player.id] = player.score;
@@ -276,37 +280,57 @@ wss.on('connection', ws => {
               gameSession.roundResults[currentRoundIndex].leaderboard = leaderboard;
               
               console.log('Round results with leaderboard:', gameSession.roundResults[currentRoundIndex]);
+              
+              // 即座にラウンド結果を全クライアントに送信
+              const roundEndResponse = {
+                type: 'roundEnd',
+                session: {
+                  id: gameSession.id,
+                  state: gameSession.state,
+                  currentRound: gameSession.currentRound,
+                  totalRounds: gameSession.totalRounds,
+                  players: gameSession.players.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    score: p.score,
+                    isHost: p.isHost
+                  })),
+                  roundResults: gameSession.roundResults, // 全ラウンド結果を送信
+                  playerScores: gameSession.playerScores
+                }
+              };
+              
+              console.log('Sending roundEnd response with results:', JSON.stringify(roundEndResponse, null, 2));
+              
+              wss.clients.forEach(client => {
+                if (client.readyState === client.OPEN) {
+                  client.send(JSON.stringify(roundEndResponse));
+                }
+              });
+            } else {
+              // まだ全員選択していない場合は選択状況のみ通知
+              const gameUpdateResponse = {
+                type: 'gameUpdate',
+                session: {
+                  id: gameSession.id,
+                  state: gameSession.state,
+                  currentRound: gameSession.currentRound,
+                  players: gameSession.players.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    score: p.score,
+                    isHost: p.isHost,
+                    hasSelected: p.currentHandShape !== undefined
+                  }))
+                }
+              };
+              
+              wss.clients.forEach(client => {
+                if (client.readyState === client.OPEN) {
+                  client.send(JSON.stringify(gameUpdateResponse));
+                }
+              });
             }
-            
-            // ゲーム状態更新を全クライアントに通知
-            const gameUpdateResponse = {
-              type: 'gameUpdate',
-              session: {
-                id: gameSession.id,
-                state: gameSession.state,
-                currentRound: gameSession.currentRound,
-                players: gameSession.players.map(p => ({
-                  id: p.id,
-                  name: p.name,
-                  score: p.score,
-                  isHost: p.isHost,
-                  // ゲーム進行中は他人の手の形は見せない
-                  hasSelected: p.currentHandShape !== undefined
-                })),
-                // ラウンド結果は最新のもののみ、かつゲーム終了時のみ送信
-                ...(gameSession.state === 'roundEnd' && {
-                  roundResults: gameSession.roundResults.slice(-1) // 最新のラウンド結果のみ
-                })
-              }
-            };
-            
-            console.log('Sending gameUpdate with round results:', JSON.stringify(gameUpdateResponse.session.roundResults, null, 2));
-            
-            wss.clients.forEach(client => {
-              if (client.readyState === client.OPEN) {
-                client.send(JSON.stringify(gameUpdateResponse));
-              }
-            });
           }
           break;
 

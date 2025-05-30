@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { GameState, PromptItem, ScoreData, HandShape, GameSession, Player, GameUpdateMessage, PlayerJoinedMessage, GameStartMessage, GameEndMessage, SelectHandShapeMessage, NewPlayerJoinedMessage, PlayerLeftMessage } from './types';
+import { GameState, PromptItem, ScoreData, HandShape, GameSession, Player, GameUpdateMessage, PlayerJoinedMessage, GameStartMessage, GameEndMessage, SelectHandShapeMessage, NewPlayerJoinedMessage, PlayerLeftMessage, RoundResult } from './types';
 import { PROMPTS, INTRO_DURATION_MS, PROMPT_DISPLAY_DURATION_MS, COUNTDOWN_SECONDS, CAPTURE_DELAY_MS, API_KEY_WARNING } from './constants';
 import CameraFeed, { CameraFeedHandle } from './components/CameraFeed';
 import PromptDisplay from './components/PromptDisplay';
@@ -8,6 +8,7 @@ import ScoreDisplay from './components/ScoreDisplay';
 import { evaluateHandShapeCreation } from './services/geminiService';
 import HandShapeIcon from './components/HandShapeIcon'; // For intro animation
 import GameService from './services/gameService';
+import { GameMessage, RoundEndMessage } from './types';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.IDLE);
@@ -264,6 +265,17 @@ const App: React.FC = () => {
           
           setUsedPrompts(new Set()); // Reset used prompts for new game
           setGameState(GameState.INTRO); // Start game intro
+          break;
+        case 'roundEnd':
+          const roundEndMessage = message as RoundEndMessage;
+          console.log("Round end message received:", roundEndMessage);
+          setGameSession(roundEndMessage.session);
+          setPlayerList(roundEndMessage.session.players);
+          setCurrentRound(roundEndMessage.session.currentRound);
+          setRoundResults(roundEndMessage.session.roundResults);
+          
+          // 結果表示状態に移行
+          setGameState(GameState.SHOWING_RESULT);
           break;
         case 'gameEnd':
           const gameEndMessage = message as GameEndMessage;

@@ -1,4 +1,4 @@
-import { GameMessage, GameUpdateMessage, PlayerJoinedMessage, Player, GameSession, HandShape, JoinGameMessage, SelectHandShapeMessage, GameStartMessage, GameEndMessage, NextRoundMessage, ErrorMessage, SubmitScoreMessage } from '../types';
+import { GameMessage, GameUpdateMessage, PlayerJoinedMessage, Player, GameSession, HandShape, JoinGameMessage, SelectHandShapeMessage, GameStartMessage, GameEndMessage, NextRoundMessage, ErrorMessage, SubmitScoreMessage, RoundEndMessage } from '../types';
 import { WEBSOCKET_URL } from '../constants';
 
 /**

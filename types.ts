@@ -156,6 +156,11 @@ export interface NextRoundMessage extends GameMessage {
   session: GameSession;
 }
 
+export interface RoundEndMessage extends GameMessage {
+  type: "roundEnd";
+  session: GameSession;
+}
+
 export interface ErrorMessage extends GameMessage {
   type: "error";
   message: string;
