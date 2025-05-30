@@ -269,6 +269,8 @@ const App: React.FC = () => {
         case 'roundEnd':
           const roundEndMessage = message as RoundEndMessage;
           console.log("Round end message received:", roundEndMessage);
+          console.log("Round results from server:", roundEndMessage.session.roundResults);
+          console.log("Number of round results:", roundEndMessage.session.roundResults?.length);
           setGameSession(roundEndMessage.session);
           setPlayerList(roundEndMessage.session.players);
           setCurrentRound(roundEndMessage.session.currentRound);
@@ -337,6 +339,7 @@ const App: React.FC = () => {
         playerId: playerId,
         handShape: handShape,
       };
+      console.log("Sending selectHandShape message:", message);
       gameServiceRef.current.sendMessage(message);
     }
   };

@@ -216,6 +216,8 @@ wss.on('connection', ws => {
             const allPlayersSelected = playersWithShapes.length === players.size && players.size > 0;
             
             console.log(`All players selected check: ${allPlayersSelected} (${playersWithShapes.length}/${players.size})`);
+            console.log('Players with shapes:', playersWithShapes.map(p => ({ name: p.name, shape: p.currentHandShape })));
+            console.log('All players:', Array.from(players.values()).map(p => ({ name: p.name, shape: p.currentHandShape })));
             
             if (allPlayersSelected) {
               console.log('All players have selected their hand shapes. Processing round end...');
@@ -301,6 +303,10 @@ wss.on('connection', ws => {
               };
               
               console.log('Sending roundEnd response with results:', JSON.stringify(roundEndResponse, null, 2));
+              
+              // 接続中のクライアント数を確認
+              const connectedClients = Array.from(wss.clients).filter(client => client.readyState === client.OPEN);
+              console.log(`Sending roundEnd to ${connectedClients.length} connected clients`);
               
               wss.clients.forEach(client => {
                 if (client.readyState === client.OPEN) {
@@ -431,6 +437,8 @@ wss.on('connection', ws => {
           const newHost = Array.from(players.values())[0];
           newHost.isHost = true;
           gameSession.hostId = newHost.id;
+          // ゲームセッションのプレイヤー配列も更新
+          gameSession.players = Array.from(players.values());
         }
         
         // 全プレイヤーが切断した場合、ゲームセッションをリセット
