@@ -10,6 +10,15 @@ import HandShapeIcon from './components/HandShapeIcon'; // For intro animation
 import GameService from './services/gameService';
 import { GameMessage, RoundEndMessage } from './types';
 
+const shuffleArray = <T,>(array: T[]): T[] => {
+  const newArray = [...array];
+  for (let i = newArray.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+  }
+  return newArray;
+};
+
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.IDLE);
   const [currentPrompt, setCurrentPrompt] = useState<PromptItem | null>(null);
@@ -18,7 +27,9 @@ const App: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [usedPrompts, setUsedPrompts] = useState<Set<string>>(new Set());
   
-  const [introShapes, setIntroShapes] = useState<HandShape[]>([HandShape.GUU, HandShape.CHOKI, HandShape.PAA]);
+  const [introShapes, setIntroShapes] = useState<HandShape[]>(() => 
+    shuffleArray([HandShape.GUU, HandShape.CHOKI, HandShape.PAA])
+  );
   const [currentIntroShapeIndex, setCurrentIntroShapeIndex] = useState(0);
 
   // Multiplayer states
@@ -44,6 +55,7 @@ const App: React.FC = () => {
     }
     setErrorMessage(null);
     setCurrentIntroShapeIndex(0); // Reset intro animation
+    setIntroShapes(shuffleArray([HandShape.GUU, HandShape.CHOKI, HandShape.PAA])); // 新しいランダム順序
     setGameState(GameState.INTRO);
   };
 
